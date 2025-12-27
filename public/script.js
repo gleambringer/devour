@@ -36,7 +36,13 @@ colorOptions.forEach(opt => {
 
 function startGame() {
     const name = playerNameInput.value.trim() || "Guest";
-    socket.emit(gameStarted ? 'respawn' : 'join', { name, color: selectedColor });
+    // Check if we are respawning or joining for the first time
+    if (isDead) {
+        socket.emit('respawn', { name, color: selectedColor });
+    } else {
+        socket.emit('join', { name, color: selectedColor });
+    }
+    
     menuScreen.style.display = 'none';
     deathScreen.style.display = 'none';
     gameStarted = true;
@@ -104,14 +110,21 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const me = players[myId];
-    if (!gameStarted || (isDead && !me)) {
+    
+    // Don't draw game elements if the game hasn't started
+    if (!gameStarted) {
         requestAnimationFrame(draw);
         return;
     }
 
     ctx.save();
+    
+    // Camera follow logic
     if (me) {
         ctx.translate(canvas.width / 2 - me.x, canvas.height / 2 - me.y);
+    } else {
+        // Fallback camera if player hasn't spawned yet
+        ctx.translate(canvas.width / 2 - worldSize / 2, canvas.height / 2 - worldSize / 2);
     }
 
     // Grid Lines
@@ -158,24 +171,22 @@ function draw() {
         ctx.shadowBlur = 0;
         ctx.closePath();
         
-        // Name Tag Rendering
+        // Name Tag
         ctx.fillStyle = 'white';
         ctx.font = 'bold 14px Inter';
         ctx.textAlign = 'center';
-        // Position name inside if big enough, otherwise above
         const nameY = p.radius > 30 ? p.y + 5 : p.y + p.radius + 20;
         ctx.fillText(p.name, p.x, nameY);
     }
 
     ctx.restore();
 
-    // Send movement to server if alive
-    if (!isDead) {
+    // Only send move events if we are not dead
+    if (!isDead && gameStarted) {
         socket.emit('move', keys);
     }
 
     requestAnimationFrame(draw);
 }
 
-// Start game loop
 draw();
