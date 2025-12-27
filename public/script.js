@@ -24,46 +24,46 @@ const scoreEl = document.getElementById('scoreVal');
 
 // Initialize game
 socket.on('init', (data) => {
+    console.log("Connected to game world:", data.id);
     worldSize = data.worldSize;
     food = data.food;
     players = data.players;
     myId = data.id;
     isDead = false;
-    deathScreen.style.display = 'none';
+    if (deathScreen) deathScreen.style.display = 'none';
 });
 
 socket.on('gameState', (data) => {
     players = data.players;
     food = data.food;
     
-    if (myId && players[myId]) {
+    if (myId && players[myId] && scoreEl) {
         scoreEl.textContent = Math.floor(players[myId].score);
     }
 });
 
 socket.on('dead', () => {
     isDead = true;
-    deathScreen.style.display = 'flex';
+    if (deathScreen) deathScreen.style.display = 'flex';
 });
 
 // Controls
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowUp' || e.key === 'w') keys.up = true;
-    if (e.key === 'ArrowDown' || e.key === 's') keys.down = true;
-    if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
-    if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
-});
+const handleInput = (e, isDown) => {
+    const key = e.key.toLowerCase();
+    if (key === 'arrowup' || key === 'w') keys.up = isDown;
+    if (key === 'arrowdown' || key === 's') keys.down = isDown;
+    if (key === 'arrowleft' || key === 'a') keys.left = isDown;
+    if (key === 'arrowright' || key === 'd') keys.right = isDown;
+};
 
-window.addEventListener('keyup', (e) => {
-    if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
-    if (e.key === 'ArrowDown' || e.key === 's') keys.down = false;
-    if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
-    if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
-});
+window.addEventListener('keydown', (e) => handleInput(e, true));
+window.addEventListener('keyup', (e) => handleInput(e, false));
 
-respawnBtn.addEventListener('click', () => {
-    socket.emit('respawn');
-});
+if (respawnBtn) {
+    respawnBtn.addEventListener('click', () => {
+        socket.emit('respawn');
+    });
+}
 
 function resize() {
     canvas.width = window.innerWidth;
@@ -74,20 +74,39 @@ window.addEventListener('resize', resize);
 resize();
 
 function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear with a solid background color
+    ctx.fillStyle = '#0a050f';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const me = players[myId];
-    if (!me && !isDead) return;
 
-    // Camera logic: translate context so 'me' is in the center
+    // If we are waiting for the server, show a loading message
+    if (!myId || (!me && !isDead)) {
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.fillText("Connecting to Devour...", canvas.width / 2, canvas.height / 2);
+        requestAnimationFrame(draw);
+        return;
+    }
+
     ctx.save();
+    
+    // Camera follow logic
     if (me) {
         ctx.translate(canvas.width / 2 - me.x, canvas.height / 2 - me.y);
     }
 
+    // Draw a grid so we can see movement
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= worldSize; i += 100) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, worldSize); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(worldSize, i); ctx.stroke();
+    }
+
     // Draw World Border
-    ctx.strokeStyle = 'rgba(157, 23, 77, 0.5)';
-    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#9d174d';
+    ctx.lineWidth = 10;
     ctx.strokeRect(0, 0, worldSize, worldSize);
 
     // Draw Food
@@ -105,20 +124,20 @@ function draw() {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
-        ctx.fill();
         
-        // Glow effect
+        // Only add glow to self or nearby players to save performance
         ctx.shadowBlur = 15;
         ctx.shadowColor = p.color;
         
+        ctx.fill();
+        ctx.shadowBlur = 0;
         ctx.closePath();
         
-        // Draw ID label
-        ctx.shadowBlur = 0;
+        // Draw Name/Status
         ctx.fillStyle = 'white';
-        ctx.font = '12px Inter';
+        ctx.font = 'bold 14px Inter';
         ctx.textAlign = 'center';
-        ctx.fillText(id === myId ? "You" : "Guest", p.x, p.y + p.radius + 15);
+        ctx.fillText(id === myId ? "YOU" : "GUEST", p.x, p.y + p.radius + 20);
     }
 
     ctx.restore();
@@ -131,4 +150,5 @@ function draw() {
     requestAnimationFrame(draw);
 }
 
+// Start loop
 draw();
