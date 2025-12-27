@@ -58,8 +58,17 @@ io.on('connection', (socket) => {
             players[socket.id].name = data.name || players[socket.id].name;
             players[socket.id].color = data.color || players[socket.id].color;
         } else {
-            // If for some reason player object was deleted
-            socket.emit('join', data);
+            // Re-join if data was lost
+            players[socket.id] = {
+                id: socket.id,
+                x: randomPos(),
+                y: randomPos(),
+                radius: INITIAL_RADIUS,
+                color: data.color || '#9d174d',
+                name: data.name || 'Guest',
+                score: 0,
+                boosting: false
+            };
         }
     });
 
@@ -105,10 +114,12 @@ io.on('connection', (socket) => {
         for (let id in players) {
             if (id === socket.id) continue;
             const other = players[id];
+            if (!other) continue; // Safety check
+
             const dist = Math.hypot(player.x - other.x, player.y - other.y);
             
             if (dist < player.radius * 0.8 && player.radius > other.radius * 1.1) {
-                player.score += other.score + 5;
+                player.score += Math.floor(other.score + 5);
                 player.radius = INITIAL_RADIUS + Math.sqrt(player.score) * 2;
                 io.to(id).emit('dead');
                 delete players[id];
