@@ -78,6 +78,7 @@ io.on('connection', (socket) => {
         const player = players[socket.id];
         if (!player) return;
 
+        // Boost requires a minimum radius to prevent shrinking into nothing
         player.boosting = data.boost && player.radius > 25;
 
         // Calculate speed (larger = slower, boosting = faster)
@@ -111,7 +112,7 @@ io.on('connection', (socket) => {
             return true;
         });
 
-        // Player Collision
+        // Player Collision (Eating other players)
         for (let otherId in players) {
             if (otherId === socket.id) continue;
             const other = players[otherId];
@@ -119,6 +120,7 @@ io.on('connection', (socket) => {
             const dy = player.y - other.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
+            // Must be 15% larger to consume another player
             if (distance < player.radius && player.radius > other.radius * 1.15) {
                 player.radius = Math.min(MAX_RADIUS, player.radius + (other.radius / 3));
                 player.score += Math.floor(other.radius);
@@ -136,8 +138,9 @@ io.on('connection', (socket) => {
     });
 });
 
+// Broadcast game state and leaderboard to all clients
 setInterval(() => {
-    // Generate Leaderboard
+    // Generate Top 5 Leaderboard
     const leaderboard = Object.values(players)
         .sort((a, b) => b.score - a.score)
         .slice(0, 5)
