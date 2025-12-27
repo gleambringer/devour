@@ -2,53 +2,74 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Devour | Gleam</title>
-    <link rel="icon" type="image/png" href="https://gleambringer.github.io/favicon.png">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Essential layout overrides to ensure canvas fills the screen */
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #0a050f;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-    </style>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
+    <!-- Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
-    <!-- UI Layer for stats -->
-    <div id="ui-layer">
-        <div class="score-card">
-            <span class="text-white opacity-60 text-xs uppercase tracking-tighter">Mass</span>
-            <span id="scoreVal" class="text-xl">20</span>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD (Heads Up Display) -->
+    <div id="hud">
+        <div id="leaderboard" class="hud-card">
+            <h2>Leaderboard</h2>
+            <div id="leaderboardList" class="flex flex-col gap-1">
+                <!-- Populated by script.js -->
+            </div>
+        </div>
+
+        <div id="score-display" class="hud-card">
+            <span class="score-label">Mass</span>
+            <span id="scoreVal" class="score-value">0</span>
+        </div>
+
+        <div class="controls-hint">
+            WASD to Move<br>
+            SPACE to Boost
         </div>
     </div>
 
-    <!-- Death Overlay -->
-    <div id="deathScreen">
-        <h1 class="death-title">CONSUMED</h1>
-        <p class="text-white/60 mb-8 max-w-xs">You have been absorbed into the collective mass of a larger entity.</p>
-        <button id="respawnBtn" class="btn-respawn">
-            Re-materialize
-        </button>
+    <!-- Main Menu Screen -->
+    <div id="menuScreen" class="overlay">
+        <div class="glass-card">
+            <h1>devour</h1>
+            
+            <div class="input-group">
+                <label for="playerName">Cell Identity</label>
+                <input type="text" id="playerName" placeholder="Enter name..." maxlength="15">
+            </div>
+
+            <div class="input-group">
+                <label>Select Skin</label>
+                <div class="color-grid">
+                    <div class="color-opt" style="background: #9d174d;" data-color="#9d174d"></div>
+                    <div class="color-opt" style="background: #0ea5e9;" data-color="#0ea5e9"></div>
+                    <div class="color-opt" style="background: #10b981;" data-color="#10b981"></div>
+                    <div class="color-opt" style="background: #f59e0b;" data-color="#f59e0b"></div>
+                    <div class="color-opt" style="background: #8b5cf6;" data-color="#8b5cf6"></div>
+                </div>
+            </div>
+
+            <button id="startBtn" class="btn-primary">Enter Arena</button>
+        </div>
     </div>
 
-    <!-- Movement Instruction -->
-    <div class="controls-hint text-white/40 uppercase tracking-widest text-[10px]">
-        Use Arrow Keys or WASD to navigate
+    <!-- Death Screen -->
+    <div id="deathScreen" class="overlay">
+        <div class="glass-card">
+            <h1 style="background: linear-gradient(to bottom, #fff, #ef4444); -webkit-background-clip: text;">consumed</h1>
+            <p style="margin-bottom: 2rem; opacity: 0.6;">You have been absorbed by a larger cell.</p>
+            <button id="respawnBtn" class="btn-primary">Try Again</button>
+        </div>
     </div>
 
-    <!-- Main Game Surface -->
-    <canvas id="gameCanvas"></canvas>
-
-    <!-- Socket.io and Game Client Logic -->
-    <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
