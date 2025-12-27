@@ -5,153 +5,137 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: { origin: "*" }
-});
+const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Game Constants
-const WORLD_SIZE = 3000; // Increased world size
+const WORLD_SIZE = 3000;
 const INITIAL_RADIUS = 20;
-const FOOD_COUNT = 300;
-const MAX_RADIUS = 400;
-const BASE_SPEED = 5;
+const FOOD_COUNT = 150;
 
-// Game State
 let players = {};
 let food = [];
 
-// Initialize Food
-function spawnFood() {
-    while (food.length < FOOD_COUNT) {
-        food.push({
-            id: Math.random().toString(36).substr(2, 9),
-            x: Math.random() * WORLD_SIZE,
-            y: Math.random() * WORLD_SIZE,
-            color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-            size: 6
-        });
-    }
-}
-spawnFood();
+// Helper: Generate random position
+const randomPos = () => Math.floor(Math.random() * (WORLD_SIZE - 40)) + 20;
 
-function createPlayer(id, name, color) {
-    return {
-        id: id,
-        name: name || "Unamed Cell",
-        x: Math.random() * (WORLD_SIZE - 200) + 100,
-        y: Math.random() * (WORLD_SIZE - 200) + 100,
-        radius: INITIAL_RADIUS,
-        color: color || `hsl(${Math.random() * 360}, 80%, 60%)`,
-        score: 0,
-        boosting: false
-    };
+// Initialize Food
+for (let i = 0; i < FOOD_COUNT; i++) {
+    food.push({
+        id: i,
+        x: randomPos(),
+        y: randomPos(),
+        color: `hsl(${Math.random() * 360}, 70%, 60%)`
+    });
 }
 
 io.on('connection', (socket) => {
-    // Wait for "join" event instead of auto-creating on connection
+    console.log('User connected:', socket.id);
+
+    // Send initial world info
+    socket.emit('init', { worldSize: WORLD_SIZE, id: socket.id });
+
     socket.on('join', (data) => {
-        players[socket.id] = createPlayer(socket.id, data.name, data.color);
-        
-        socket.emit('init', {
-            worldSize: WORLD_SIZE,
-            food: food,
-            players: players,
-            id: socket.id
-        });
+        players[socket.id] = {
+            id: socket.id,
+            x: randomPos(),
+            y: randomPos(),
+            radius: INITIAL_RADIUS,
+            color: data.color || '#9d174d',
+            name: data.name || 'Guest',
+            score: 0,
+            boosting: false
+        };
     });
 
     socket.on('respawn', (data) => {
-        if (!players[socket.id]) {
-            players[socket.id] = createPlayer(socket.id, data.name, data.color);
-            socket.emit('init', {
-                worldSize: WORLD_SIZE,
-                food: food,
-                players: players,
-                id: socket.id
-            });
+        if (players[socket.id]) {
+            players[socket.id].x = randomPos();
+            players[socket.id].y = randomPos();
+            players[socket.id].radius = INITIAL_RADIUS;
+            players[socket.id].score = 0;
+            players[socket.id].name = data.name || players[socket.id].name;
+            players[socket.id].color = data.color || players[socket.id].color;
+        } else {
+            // If for some reason player object was deleted
+            socket.emit('join', data);
         }
     });
 
-    socket.on('move', (data) => {
+    socket.on('move', (keys) => {
         const player = players[socket.id];
         if (!player) return;
 
-        // Boost requires a minimum radius to prevent shrinking into nothing
-        player.boosting = data.boost && player.radius > 25;
-
-        // Calculate speed (larger = slower, boosting = faster)
-        let speed = Math.max(1.5, BASE_SPEED - (player.radius / 60));
-        if (player.boosting) {
-            speed *= 1.8;
-            player.radius -= 0.05; // Lose mass while boosting
+        let speed = player.boosting && player.score > 5 ? 5 : 3;
+        
+        // Decay score if boosting
+        if (player.boosting && player.score > 5) {
+            player.score -= 0.05;
+            player.radius = INITIAL_RADIUS + Math.sqrt(player.score) * 2;
         }
 
-        if (data.up) player.y -= speed;
-        if (data.down) player.y += speed;
-        if (data.left) player.x -= speed;
-        if (data.right) player.x += speed;
+        if (keys.up) player.y -= speed;
+        if (keys.down) player.y += speed;
+        if (keys.left) player.x -= speed;
+        if (keys.right) player.x += speed;
 
-        // Bound to world
+        player.boosting = keys.boost;
+
+        // Boundary checks
         player.x = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.x));
         player.y = Math.max(player.radius, Math.min(WORLD_SIZE - player.radius, player.y));
 
-        // Food Collision
-        food = food.filter(dot => {
-            const dx = player.x - dot.x;
-            const dy = player.y - dot.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance < player.radius) {
-                if (player.radius < MAX_RADIUS) {
-                    player.radius += 0.4;
-                    player.score += 1;
-                }
-                return false;
+        // Food collision
+        food.forEach((dot, index) => {
+            const dist = Math.hypot(player.x - dot.x, player.y - dot.y);
+            if (dist < player.radius) {
+                player.score += 1;
+                player.radius = INITIAL_RADIUS + Math.sqrt(player.score) * 2;
+                food[index] = {
+                    id: index,
+                    x: randomPos(),
+                    y: randomPos(),
+                    color: `hsl(${Math.random() * 360}, 70%, 60%)`
+                };
             }
-            return true;
         });
 
-        // Player Collision (Eating other players)
-        for (let otherId in players) {
-            if (otherId === socket.id) continue;
-            const other = players[otherId];
-            const dx = player.x - other.x;
-            const dy = player.y - other.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            // Must be 15% larger to consume another player
-            if (distance < player.radius && player.radius > other.radius * 1.15) {
-                player.radius = Math.min(MAX_RADIUS, player.radius + (other.radius / 3));
-                player.score += Math.floor(other.radius);
-                io.to(otherId).emit('dead');
-                delete players[otherId];
+        // Player collision (Eating others)
+        for (let id in players) {
+            if (id === socket.id) continue;
+            const other = players[id];
+            const dist = Math.hypot(player.x - other.x, player.y - other.y);
+            
+            if (dist < player.radius * 0.8 && player.radius > other.radius * 1.1) {
+                player.score += other.score + 5;
+                player.radius = INITIAL_RADIUS + Math.sqrt(player.score) * 2;
+                io.to(id).emit('dead');
+                delete players[id];
             }
         }
-
-        if (food.length < FOOD_COUNT) spawnFood();
     });
 
     socket.on('disconnect', () => {
         delete players[socket.id];
-        io.emit('playerLeft', socket.id);
     });
 });
 
-// Broadcast game state and leaderboard to all clients
+// Game Loop
 setInterval(() => {
-    // Generate Top 5 Leaderboard
     const leaderboard = Object.values(players)
         .sort((a, b) => b.score - a.score)
         .slice(0, 5)
         .map(p => ({ name: p.name, score: Math.floor(p.score) }));
 
     io.emit('gameState', {
-        players: players,
-        food: food,
-        leaderboard: leaderboard
+        players,
+        food,
+        leaderboard
     });
 }, 1000 / 60);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
